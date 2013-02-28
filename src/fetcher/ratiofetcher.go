@@ -1,12 +1,22 @@
-package main
+package fetcher
+
 import "net/http"
 import "io/ioutil"
-import "fmt"
 import "regexp"
 import "strings"
 import "strconv"
 
-func fetchRatiosPage(stock *Stock){
+var RatioChannel = make(chan *Stock)
+
+func RatioFetcher(nextChan chan *Stock) {
+    for {
+        stock := <- RatioChannel
+        ratiosPage := fetchRatiosPage(stock)
+        go findRatio(stock, ratiosPage, nextChan)
+    }
+}
+
+func fetchRatiosPage(stock *Stock) string {
     resp, err := http.Get("http://www.moneycontrol.com/financials/" + stock.URLName + "/ratios/" + stock.Name)
     
     if err != nil {
@@ -14,11 +24,11 @@ func fetchRatiosPage(stock *Stock){
     }
     defer resp.Body.Close() 
     ratio_data, err := ioutil.ReadAll(resp.Body)
-    stock.RatioPage = string(ratio_data)
+    return string(ratio_data)
 }
 
-func findRatio(stock *Stock) {
-    lines := strings.Split (stock.RatioPage, "\n")
+func findRatio(stock *Stock, ratiosPage string, nextChan chan *Stock) {
+    lines := strings.Split (ratiosPage, "\n")
     
     current_ratio_line_index := -1
 
@@ -45,14 +55,6 @@ func findRatio(stock *Stock) {
         stock.CurrentRatio = append(stock.CurrentRatio, data)
         current_ratio_line_index++
     }
-}
-
-func main() {
-    stock := &Stock {
-              Name: "AL",
-              URLName: "ashokleyland",
-          }
-    fetchRatiosPage(stock)
-    findRatio(stock)
-    fmt.Println(stock.CurrentRatio)
+    
+    nextChan <- stock
 }
